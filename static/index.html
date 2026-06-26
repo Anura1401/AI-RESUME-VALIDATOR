@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Resume Validator & Ranker</title>
+    <!-- Google Fonts: Inter & Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar / Configuration Panel -->
+        <aside class="sidebar glass">
+            <div class="sidebar-header">
+                <div class="logo-container">
+                    <h2>AI Resume Validator</h2>
+                </div>
+                <p class="subtitle">Dynamic Resume Validator & Ranker</p>
+            </div>
+
+            <form id="ranking-form" class="config-form">
+                <!-- Job Title Input -->
+                <div class="form-group">
+                    <label for="job_title"><i class="fa-solid fa-briefcase"></i> Target Job Title</label>
+                    <input type="text" id="job_title" name="job_title" placeholder="e.g. Senior Software Engineer"
+                        required>
+                </div>
+
+                <!-- Job Description Input -->
+                <div class="form-group">
+                    <label for="job_description"><i class="fa-solid fa-file-invoice"></i> Job Description</label>
+                    <textarea id="job_description" name="job_description" rows="6"
+                        placeholder="Describe key responsibilities and role context..." required></textarea>
+                </div>
+
+                <!-- Qualifications / Skills Input -->
+                <div class="form-group">
+                    <label for="qualifications"><i class="fa-solid fa-graduation-cap"></i> Qualifications & Key
+                        Skills</label>
+                    <textarea id="qualifications" name="qualifications" rows="4"
+                        placeholder="e.g. B.S. Computer Science, 5+ years React, Python, AWS..."></textarea>
+                </div>
+
+                <!-- Candidate Source Picker -->
+                <div class="form-group">
+                    <label><i class="fa-solid fa-database"></i> Candidate Database Source</label>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="candidate_source" value="defaults" checked>
+                            <span class="radio-custom"></span>
+                            <span class="label-text">Load Mock Database (650 Profiles)</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="candidate_source" value="custom_json">
+                            <span class="radio-custom"></span>
+                            <span class="label-text">Upload Candidate JSON/JSONL Database</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="candidate_source" value="resumes">
+                            <span class="radio-custom"></span>
+                            <span class="label-text">Upload Raw Resume Files (PDF / TXT)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- File Upload Container for JSON/JSONL Database -->
+                <div id="json-upload-group" class="form-group file-upload-group hidden">
+                    <label for="candidates_file"><i class="fa-solid fa-file-code"></i> Upload JSON/JSONL File</label>
+                    <div class="upload-dropzone" id="json-dropzone">
+                        <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+                        <p>Drag & drop candidates.jsonl here or click to browse</p>
+                        <input type="file" id="candidates_file" name="candidates_file" accept=".json,.jsonl">
+                        <span class="file-name-display" id="json-file-name"></span>
+                    </div>
+                </div>
+
+                <!-- File Upload Container for Raw Resumes -->
+                <div id="resumes-upload-group" class="form-group file-upload-group hidden">
+                    <label for="resumes"><i class="fa-solid fa-file-pdf"></i> Upload Resumes (PDF / TXT)</label>
+                    <div class="upload-dropzone" id="resumes-dropzone">
+                        <i class="fa-solid fa-folder-open upload-icon"></i>
+                        <p>Drag & drop multiple PDF or TXT resumes or click to browse</p>
+                        <input type="file" id="resumes" name="resumes" accept=".pdf,.txt" multiple>
+                        <span class="file-name-display" id="resumes-files-count"></span>
+                    </div>
+                </div>
+
+                <!-- Run Button -->
+                <button type="submit" id="run-btn" class="glow-button">
+                    <i class="fa-solid fa-play"></i> Run Resume Ranking Pipeline
+                </button>
+            </form>
+        </aside>
+
+        <!-- Main Display / Results Panel -->
+        <main class="main-content">
+            <!-- Summary Metrics Cards -->
+            <section class="metrics-grid">
+                <div class="metric-card glass">
+                    <div class="metric-icon val-green"><i class="fa-solid fa-users"></i></div>
+                    <div class="metric-info">
+                        <h3>Total Resumes</h3>
+                        <p id="stat-total">-</p>
+                    </div>
+                </div>
+                <div class="metric-card glass">
+                    <div class="metric-icon val-purple"><i class="fa-solid fa-star"></i></div>
+                    <div class="metric-info">
+                        <h3>Top Match Score</h3>
+                        <p id="stat-top">-</p>
+                    </div>
+                </div>
+                <div class="metric-card glass">
+                    <div class="metric-icon val-blue"><i class="fa-solid fa-chart-line"></i></div>
+                    <div class="metric-info">
+                        <h3>Average Match</h3>
+                        <p id="stat-avg">-</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Status Logs Box -->
+            <section id="log-section" class="log-section glass">
+                <div class="section-title">
+                    <h4><i class="fa-solid fa-terminal"></i> AI Pipeline Progress Logs</h4>
+                    <span class="pulse-indicator hidden" id="log-pulse"></span>
+                </div>
+                <div class="terminal-box" id="log-box">
+                    <div class="log-line system">Waiting to start ranking pipeline... Fill details on the left and click
+                        "Run".</div>
+                </div>
+            </section>
+
+            <!-- Results Section -->
+            <section class="results-section glass hidden" id="results-panel">
+                <div class="results-header">
+                    <div class="title-area">
+                        <h4><i class="fa-solid fa-list-check"></i> Candidate Match Rankings</h4>
+                        <p>Top candidate matches sorted by semantic relevance and requirements alignment.</p>
+                    </div>
+                    <!-- Export Actions -->
+                    <div class="export-actions">
+                        <button id="export-excel-btn" class="action-button"><i class="fa-solid fa-file-excel"></i>
+                            Export Excel</button>
+                        <button id="export-csv-btn" class="action-button"><i class="fa-solid fa-file-csv"></i> Export
+                            CSV</button>
+                        <button id="export-json-btn" class="action-button"><i class="fa-solid fa-code"></i> Download
+                            JSON</button>
+                    </div>
+                </div>
+
+                <!-- Filters & Search Bar -->
+                <div class="filter-bar">
+                    <div class="search-box">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="candidate-search"
+                            placeholder="Search by name, skills, title, or keyword...">
+                    </div>
+                    <div class="filters">
+                        <!-- Score filter slider -->
+                        <div class="slider-filter">
+                            <label for="score-range">Min Score: <span id="score-val">0%</span></label>
+                            <input type="range" id="score-range" min="0" max="100" value="0">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Candidates List -->
+                <div class="candidates-list" id="candidates-container">
+                    <!-- Cards will be dynamically inserted here -->
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Candidate Detailed Modals / Drawer -->
+    <div id="detail-modal" class="modal-overlay hidden">
+        <div class="modal-content glass">
+            <div class="modal-header">
+                <h3 id="modal-candidate-id">CANDIDATE DETAILS</h3>
+                <button class="close-btn" id="close-modal-btn"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <!-- Quick Info -->
+                <div class="candidate-meta-details">
+                    <div class="meta-item">
+                        <span class="label">Current Title</span>
+                        <span class="value" id="modal-title">-</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="label">Total Score</span>
+                        <span class="value score-highlight" id="modal-score">-</span>
+                    </div>
+                </div>
+
+                <!-- AI Explanations / Modifiers -->
+                <div class="modal-section">
+                    <h5><i class="fa-solid fa-brain"></i> AI Matching Breakdown</h5>
+                    <div class="reasoning-box" id="modal-reasoning-desc">
+                        <!-- Explanatory lists -->
+                    </div>
+                </div>
+
+                <!-- Resume Text / Experience Timeline -->
+                <div class="modal-section">
+                    <h5><i class="fa-solid fa-file-text"></i> Resume Content / Work History</h5>
+                    <div class="resume-text-view" id="modal-resume-content">
+                        <!-- Expanded parsed resume text or structured experiences -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+
+</html>
