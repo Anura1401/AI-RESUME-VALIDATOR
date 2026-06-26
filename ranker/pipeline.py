@@ -92,7 +92,7 @@ def run_ranking_pipeline(job_title, job_description, qualifications, candidates,
         bm25_scores = bm25.get_scores(bm25_query_words).tolist()
 
     log_progress(status_callback, f"Initializing candidate context semantic parser on {DEVICE}...")
-    dense_model = SentenceTransformer("BAAI/bge-small-en-v1.5", device=DEVICE)
+    dense_model = SentenceTransformer("BAAI/bge-base-en-v1.5", device=DEVICE)
     
     log_progress(status_callback, f"Generating dense embeddings for top {total_candidates} profiles (batch encoding)...")
     profile_narratives = [c["narrative"] for c in candidates]
@@ -205,9 +205,22 @@ def run_ranking_pipeline(job_title, job_description, qualifications, candidates,
             except Exception as e:
                 log_progress(status_callback, f"Error during batch title encoding: {e}")
 
+    # Precompute min and max BM25 scores among the top N candidates to normalize them to [0, 1]
+    bm25_scores_all = [cand.get("sparse_score", 0.0) for cand in top_n_candidates]
+    max_bm25 = max(bm25_scores_all) if bm25_scores_all else 1.0
+    min_bm25 = min(bm25_scores_all) if bm25_scores_all else 0.0
+    bm25_range = max_bm25 - min_bm25
+
     for c in top_n_candidates:
         s_semantic_raw = c["s_semantic"]
         s_semantic_prob = sigmoid(s_semantic_raw)
+        
+        # Normalize BM25 score
+        raw_bm25 = c.get("sparse_score", 0.0)
+        bm25_score_normalized = (raw_bm25 - min_bm25) / bm25_range if bm25_range > 0 else 1.0
+        
+        # Weighted hybrid scoring: 0.3 * BM25 + 0.7 * Semantic
+        hybrid_score = 0.3 * bm25_score_normalized + 0.7 * s_semantic_prob
         
         if use_mock_heuristics:
             title_mult, title_reason = get_legacy_title_penalty(c.get("current_title", ""))
@@ -229,16 +242,18 @@ def run_ranking_pipeline(job_title, job_description, qualifications, candidates,
             company_mult, company_reason = 1.0, "No company penalty applied (Dynamic upload)"
             activity_mult, activity_reason = 1.0, "No activity penalty applied (Dynamic upload)"
             
-        final_score = s_semantic_prob * title_mult * company_mult * activity_mult
+        final_score = hybrid_score * title_mult * company_mult * activity_mult
         
         c["s_semantic_prob"] = s_semantic_prob
+        c["bm25_score_normalized"] = bm25_score_normalized
+        c["hybrid_score"] = hybrid_score
         c["title_mult"] = title_mult
         c["company_mult"] = company_mult
         c["activity_mult"] = activity_mult
         c["final_score"] = final_score
         
         reasons = [
-            f"Semantic Relevance Match: {s_semantic_prob * 100:.1f}%",
+            f"Semantic Relevance Match: {s_semantic_prob * 100:.1f}% (BM25: {bm25_score_normalized * 100:.1f}%, Hybrid: {hybrid_score * 100:.1f}%)",
             f"Requirement Alignment: {title_reason}",
             f"Experience Profile check: {company_reason}",
             f"Platform Activity status: {activity_reason}"
